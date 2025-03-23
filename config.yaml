@@ -5,7 +5,7 @@ filters:
       label: "Language"
       type: "dropdown"
       enabled: true
-      default: "All"
+      default: "English (English)"
       query_prefix: "lang:"
       options:
         - All
@@ -68,57 +68,65 @@ filters:
         - Urdu (ﺍﺭﺩﻭ)
         - Vietnamese (Tiếng Việt)
         - Chinese (中文)
-      
+
     - key: "near_location"
-      label: "Near Location"
+      label: "Near Location (City)"
       type: "text"
       enabled: true
       default: ""
+      placeholder: "e.g. The Hague"
       query_prefix: "near:"
-      
+
     - key: "min_retweets"
       label: "Minimum Retweets"
       type: "number"
       enabled: true
       default: 0
       query_prefix: "min_retweets:"
-      
+
     - key: "min_likes"
       label: "Minimum Likes"
       type: "number"
       enabled: true
       default: 0
       query_prefix: "min_faves:"
-      
+
     - key: "min_replies"
       label: "Minimum Replies"
       type: "number"
       enabled: true
       default: 0
       query_prefix: "min_replies:"
-      
+
     - key: "filter_news"
       label: "Filter News Only"
       type: "checkbox"
       enabled: true
       default: false
       query_prefix: "filter:news"
-      
+
     - key: "has_engagement"
       label: "Has Engagement"
       type: "checkbox"
       enabled: true
-      default: false
+      default: true
       query_prefix: "filter:has_engagement"
 
-    - key: "self_threads"
-      label: "Self Threads (Not Retweets)"
+    - key: "exclude_grok"
+      label: "Exclude Grok (AI)"
       type: "checkbox"
-      enabled: false
+      enabled: true
       default: true
-      query_prefix: "filter:self_threads"      
+      query_prefix: "-from:grok"
 
-  default_max_tweets: 40
+    - key: "exclude_perplexity"
+      label: "Exclude Perplexity (AI)"
+      type: "checkbox"
+      enabled: true
+      default: true
+      query_prefix: "-from:AskPerplexity"
+
+  default_max_tweets: 30
 
   # New language mapping dictionary
   language_mapping:
