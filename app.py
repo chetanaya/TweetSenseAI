@@ -9,17 +9,26 @@ import yaml
 
 load_dotenv()
 
+# Set page title and favicon
+st.set_page_config(page_title="Twitter Search Dashboard", page_icon="🐦", layout="wide")
+
 # Load configuration from config.yaml
-with open("config.yaml", "r") as config_file:
-    config = yaml.safe_load(config_file)
+try:
+    with open("config.yaml", "r") as config_file:
+        config = yaml.safe_load(config_file)
+except FileNotFoundError:
+    st.error("Error: config.yaml not found. Please make sure the file exists.")
+    config = {}  # Provide a default empty config to prevent further errors
+    st.stop()
+except yaml.YAMLError as e:
+    st.error(f"Error parsing config.yaml: {e}")
+    config = {}
+    st.stop()
 
 # Extract configuration values
 filters_config = config.get("filters", {})
 dynamic_filters = filters_config.get("dynamic_filters", [])
 default_max_tweets = filters_config.get("default_max_tweets", 40)
-
-# Set page title and favicon
-st.set_page_config(page_title="Twitter Search Dashboard", page_icon="🐦", layout="wide")
 
 # Initialize session state variables
 if "next_cursor" not in st.session_state:
@@ -58,10 +67,10 @@ with st.sidebar:
     st.subheader("Additional Filters")
     max_tweets = st.number_input(
         "Tweets to Fetch",
-        min_value=15,
-        max_value=300,
+        min_value=20,
+        max_value=400,
         value=default_max_tweets,
-        step=15,
+        step=20,
         help="Number of tweets to fetch (will make multiple API calls if needed)",
     )
 
@@ -141,17 +150,13 @@ with st.sidebar:
             "queryType": query_type,
             "cursor": current_cursor,
         }
-        print(payload)  # Debug print; remove in production
         headers = {"X-API-Key": api_key}
         try:
             response = requests.get(base_url, headers=headers, params=payload)
-            if response.status_code == 200:
-                return response.json()
-            else:
-                st.error(f"Error: {response.status_code} - {response.text}")
-                return None
-        except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+            response.raise_for_status()  # Raise HTTPError for bad responses (4xx or 5xx)
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            st.error(f"API request failed: {e}")
             return None
 
     def search_tweets():
@@ -164,29 +169,33 @@ with st.sidebar:
         progress_bar = st.sidebar.progress(0)
         status_text = st.sidebar.empty()
 
-        while total_tweets_fetched < max_tweets:
-            page_count += 1
-            status_text.text(f"Fetching page {page_count}...")
-            page_results = search_tweets_with_cursor(current_cursor)
-            if not page_results or "tweets" not in page_results:
-                break
-            page_tweets = page_results["tweets"]
-            tweet_count = len(page_tweets)
-            if tweet_count == 0:
-                break
-            all_tweets.extend(page_tweets)
-            total_tweets_fetched += tweet_count
-            progress_bar.progress(min(1.0, total_tweets_fetched / max_tweets))
-            status_text.text(f"Fetched {total_tweets_fetched} tweets so far...")
-            if "next_cursor" in page_results and page_results["next_cursor"]:
-                current_cursor = page_results["next_cursor"]
-                all_results["next_cursor"] = current_cursor
-            else:
-                break
-            if total_tweets_fetched >= max_tweets:
-                break
-        progress_bar.empty()
-        status_text.empty()
+        try:
+            while total_tweets_fetched < max_tweets:
+                page_count += 1
+                status_text.text(f"Fetching page {page_count}...")
+                page_results = search_tweets_with_cursor(current_cursor)
+                if not page_results or "tweets" not in page_results:
+                    break
+                page_tweets = page_results["tweets"]
+                tweet_count = len(page_tweets)
+                if tweet_count == 0:
+                    break
+                all_tweets.extend(page_tweets)
+                total_tweets_fetched += tweet_count
+                progress_bar.progress(min(1.0, total_tweets_fetched / max_tweets))
+                status_text.text(f"Fetched {total_tweets_fetched} tweets so far...")
+                if "next_cursor" in page_results and page_results["next_cursor"]:
+                    current_cursor = page_results["next_cursor"]
+                    all_results["next_cursor"] = current_cursor
+                else:
+                    break
+                if total_tweets_fetched >= max_tweets:
+                    break
+        except Exception as e:
+            st.error(f"An unexpected error occurred during tweet fetching: {e}")
+        finally:
+            progress_bar.empty()
+            status_text.empty()
         all_results["tweets"] = all_tweets
         return all_results
 
@@ -204,36 +213,41 @@ with st.sidebar:
 
 # Function to group tweets by conversationId and fetch missing primary tweets
 def group_tweets(df):
-    primary_ids = set(
-        df.loc[
-            (df["isReply"] == False) | (df["id"] == df["conversationId"]), "id"
-        ].unique()
-    )
-    reply_conv_ids = set(df.loc[df["isReply"] == True, "conversationId"].unique())
-    missing_primary = reply_conv_ids - primary_ids
-
-    if missing_primary:
-        tweet_ids_param = ",".join(missing_primary)
-        resp = requests.get(
-            "https://api.twitterapi.io/twitter/tweets",
-            params={"tweet_ids": tweet_ids_param},
-            headers={"X-API-Key": api_key},
+    try:
+        primary_ids = set(
+            df.loc[~df["isReply"] | (df["id"] == df["conversationId"]), "id"].unique()
         )
-        if resp.status_code == 200:
+        reply_conv_ids = set(df.loc[df["isReply"], "conversationId"].unique())
+        missing_primary = reply_conv_ids - primary_ids
+
+        if missing_primary:
+            tweet_ids_param = ",".join(missing_primary)
+            resp = requests.get(
+                "https://api.twitterapi.io/twitter/tweets",
+                params={"tweet_ids": tweet_ids_param},
+                headers={"X-API-Key": api_key},
+            )
+            resp.raise_for_status()
             missing_tweets = resp.json().get("tweets", [])
             if missing_tweets:
                 df = pd.concat([df, pd.DataFrame(missing_tweets)], ignore_index=True)
-    grouped = {}
-    for conv_id in df["conversationId"].unique():
-        group = df[df["conversationId"] == conv_id]
-        primary = group[group["id"] == conv_id]
-        if primary.empty:
-            primary = group[group["isReply"] == False]
-        if primary.empty:
-            primary = group.iloc[[0]]
-        replies = group[group["id"] != conv_id]
-        grouped[conv_id] = {"primary": primary, "replies": replies}
-    return grouped
+        grouped = {}
+        for conv_id in df["conversationId"].unique():
+            group = df[df["conversationId"] == conv_id]
+            primary = group[group["id"] == conv_id]
+            if primary.empty:
+                primary = group[~group["isReply"]]
+            if primary.empty:
+                primary = group.iloc[[0]]
+            replies = group[group["id"] != conv_id]
+            grouped[conv_id] = {"primary": primary, "replies": replies}
+        return grouped
+    except requests.exceptions.RequestException as e:
+        st.error(f"API request in group_tweets failed: {e}")
+        return {}
+    except Exception as e:
+        st.error(f"An error occurred during tweet grouping: {e}")
+        return {}
 
 
 # Main content area
@@ -330,24 +344,36 @@ else:
             st.subheader("Tweet Engagement Analysis")
             engagement_df = pd.DataFrame(
                 {
-                    "created_at": tweets_df["created_at"]
-                    if "created_at" in tweets_df.columns
-                    else pd.to_datetime(tweets_df["createdAt"]),
-                    "likes": tweets_df["likeCount"]
-                    if "likeCount" in tweets_df.columns
-                    else pd.Series(0, index=tweets_df.index),
-                    "retweets": tweets_df["retweetCount"]
-                    if "retweetCount" in tweets_df.columns
-                    else pd.Series(0, index=tweets_df.index),
-                    "replies": tweets_df["replyCount"]
-                    if "replyCount" in tweets_df.columns
-                    else pd.Series(0, index=tweets_df.index),
-                    "quotes": tweets_df["quoteCount"]
-                    if "quoteCount" in tweets_df.columns
-                    else pd.Series(0, index=tweets_df.index),
-                    "views": tweets_df["viewCount"]
-                    if "viewCount" in tweets_df.columns
-                    else pd.Series(0, index=tweets_df.index),
+                    "created_at": (
+                        tweets_df["created_at"]
+                        if "created_at" in tweets_df.columns
+                        else pd.to_datetime(tweets_df["createdAt"])
+                    ),
+                    "likes": (
+                        tweets_df["likeCount"]
+                        if "likeCount" in tweets_df.columns
+                        else pd.Series(0, index=tweets_df.index)
+                    ),
+                    "retweets": (
+                        tweets_df["retweetCount"]
+                        if "retweetCount" in tweets_df.columns
+                        else pd.Series(0, index=tweets_df.index)
+                    ),
+                    "replies": (
+                        tweets_df["replyCount"]
+                        if "replyCount" in tweets_df.columns
+                        else pd.Series(0, index=tweets_df.index)
+                    ),
+                    "quotes": (
+                        tweets_df["quoteCount"]
+                        if "quoteCount" in tweets_df.columns
+                        else pd.Series(0, index=tweets_df.index)
+                    ),
+                    "views": (
+                        tweets_df["viewCount"]
+                        if "viewCount" in tweets_df.columns
+                        else pd.Series(0, index=tweets_df.index)
+                    ),
                 }
             )
             engagement_df["total_engagement"] = (
