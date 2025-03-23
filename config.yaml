@@ -1,0 +1,183 @@
+filters:
+  # Dynamic filters can be added here – for new filter types like dropdown, text, etc.
+  dynamic_filters:
+    - key: "language"
+      label: "Language"
+      type: "dropdown"
+      enabled: true
+      default: "All"
+      query_prefix: "lang:"
+      options:
+        - All
+        - Amharic (አማርኛ)
+        - Arabic (العربية)
+        - Bulgarian (Български)
+        - Bengali (বাংলা)
+        - Tibetan (བོད་སྐད)
+        - Catalan (Català)
+        - Cherokee (ᏣᎳᎩ)
+        - Czech (čeština)
+        - Danish (Dansk)
+        - Maldivian (ދިވެހި)
+        - Greek (Ελληνικά)
+        - English (English)
+        - Spanish (Español)
+        - Estonian (eesti)
+        - Persian (فارسی)
+        - Finnish (Suomi)
+        - French (Français)
+        - Gujarati (ગુજરાતી)
+        - Hindi (हिंदी)
+        - Haitian Creole (Kreyòl ayisyen)
+        - Hungarian (Magyar)
+        - Armenian (Հայերեն)
+        - Indonesian (Bahasa Indonesia)
+        - Icelandic (Íslenska)
+        - Italian (Italiano)
+        - Inuktitut (ᐃᓄᒃᑎᑐᑦ)
+        - Hebrew (עברית)
+        - Japanese (日本語)
+        - Georgian (ქართული)
+        - Khmer (ខ្មែរ)
+        - Kannada (ಕನ್ನಡ)
+        - Korean (한국어)
+        - Lao (ລາວ)
+        - Lithuanian (Lietuvių)
+        - Latvian (latviešu valoda)
+        - Malayalam (മലയാളം)
+        - Myanmar (မြန်မာဘာသာ)
+        - Nepali (नेपाली)
+        - Dutch (Nederlands)
+        - Norwegian (Norsk)
+        - Oriya (ଓଡ଼ିଆ)
+        - Panjabi (ਪੰਜਾਬੀ)
+        - Polish (Polski)
+        - Portuguese (Português)
+        - Romanian (limba română)
+        - Russian (Русский)
+        - Sinhala (සිංහල)
+        - Slovak (slovenčina)
+        - Slovene (slovenski jezik)
+        - Swedish (Svenska)
+        - Tamil (தமிழ்)
+        - Telugu (తెలుగు)
+        - Thai (ไทย)
+        - Tagalog (Tagalog)
+        - Turkish (Türkçe)
+        - Ukrainian (українська мова)
+        - Urdu (ﺍﺭﺩﻭ)
+        - Vietnamese (Tiếng Việt)
+        - Chinese (中文)
+      
+    - key: "near_location"
+      label: "Near Location"
+      type: "text"
+      enabled: true
+      default: ""
+      query_prefix: "near:"
+      
+    - key: "min_retweets"
+      label: "Minimum Retweets"
+      type: "number"
+      enabled: true
+      default: 0
+      query_prefix: "min_retweets:"
+      
+    - key: "min_likes"
+      label: "Minimum Likes"
+      type: "number"
+      enabled: true
+      default: 0
+      query_prefix: "min_faves:"
+      
+    - key: "min_replies"
+      label: "Minimum Replies"
+      type: "number"
+      enabled: true
+      default: 0
+      query_prefix: "min_replies:"
+      
+    - key: "filter_news"
+      label: "Filter News Only"
+      type: "checkbox"
+      enabled: true
+      default: false
+      query_prefix: "filter:news"
+      
+    - key: "has_engagement"
+      label: "Has Engagement"
+      type: "checkbox"
+      enabled: true
+      default: false
+      query_prefix: "filter:has_engagement"
+
+    - key: "self_threads"
+      label: "Self Threads (Not Retweets)"
+      type: "checkbox"
+      enabled: false
+      default: true
+      query_prefix: "filter:self_threads"      
+
+  default_max_tweets: 40
+
+  # New language mapping dictionary
+  language_mapping:
+    "Amharic (አማርኛ)": "am"
+    "Arabic (العربية)": "ar"
+    "Bulgarian (Български)": "bg"
+    "Bengali (বাংলা)": "bn"
+    "Tibetan (བོད་སྐད)": "bo"
+    "Catalan (Català)": "ca"
+    "Cherokee (ᏣᎳᎩ)": "ch"
+    "Czech (čeština)": "cs"
+    "Danish (Dansk)": "da"
+    "Maldivian (ދިވެހި)": "dv"
+    "Greek (Ελληνικά)": "el"
+    "English (English)": "en"
+    "Spanish (Español)": "es"
+    "Estonian (eesti)": "et"
+    "Persian (فارسی)": "fa"
+    "Finnish (Suomi)": "fi"
+    "French (Français)": "fr"
+    "Gujarati (ગુજરાતી)": "gu"
+    "Hindi (हिंदी)": "hi"
+    "Haitian Creole (Kreyòl ayisyen)": "ht"
+    "Hungarian (Magyar)": "hu"
+    "Armenian (Հայերեն)": "hy"
+    "Indonesian (Bahasa Indonesia)": "in"
+    "Icelandic (Íslenska)": "is"
+    "Italian (Italiano)": "it"
+    "Inuktitut (ᐃᓄᒃᑎᑐᑦ)": "iu"
+    "Hebrew (עברית)": "iw"
+    "Japanese (日本語)": "ja"
+    "Georgian (ქართული)": "ka"
+    "Khmer (ខ្មែរ)": "km"
+    "Kannada (ಕನ್ನಡ)": "kn"
+    "Korean (한국어)": "ko"
+    "Lao (ລາວ)": "lo"
+    "Lithuanian (Lietuvių)": "lt"
+    "Latvian (latviešu valoda)": "lv"
+    "Malayalam (മലയാളം)": "ml"
+    "Myanmar (မြန်မာဘာသာ)": "my"
+    "Nepali (नेपाली)": "ne"
+    "Dutch (Nederlands)": "nl"
+    "Norwegian (Norsk)": "no"
+    "Oriya (ଓଡ଼ିଆ)": "or"
+    "Panjabi (ਪੰਜਾਬੀ)": "pa"
+    "Polish (Polski)": "pl"
+    "Portuguese (Português)": "pt"
+    "Romanian (limba română)": "ro"
+    "Russian (Русский)": "ru"
+    "Sinhala (සිංහල)": "si"
+    "Slovak (slovenčina)": "sk"
+    "Slovene (slovenski jezik)": "sl"
+    "Swedish (Svenska)": "sv"
+    "Tamil (தமிழ்)": "ta"
+    "Telugu (తెలుగు)": "te"
+    "Thai (ไทย)": "th"
+    "Tagalog (Tagalog)": "tl"
+    "Turkish (Türkçe)": "tr"
+    "Ukrainian (українська мова)": "uk"
+    "Urdu (ﺍﺭﺩﻭ)": "ur"
+    "Vietnamese (Tiếng Việt)": "vi"
+    "Chinese (中文)": "zh"
