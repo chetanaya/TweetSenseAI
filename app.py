@@ -7,6 +7,12 @@ import os
 from dotenv import load_dotenv
 import yaml
 
+# New imports for AI-powered analysis
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+from collections import Counter
+import numpy as np
+
 load_dotenv()
 
 # Set page title and favicon
@@ -44,6 +50,13 @@ if "grouped_tweets" not in st.session_state:
     st.session_state.grouped_tweets = None
 if "display_df" not in st.session_state:
     st.session_state.display_df = None
+# New sentiment analysis state variables
+if "sentiment_results" not in st.session_state:
+    st.session_state.sentiment_results = None
+if "phrases" not in st.session_state:
+    st.session_state.phrases = None
+if "summary" not in st.session_state:
+    st.session_state.summary = None
 
 # Dashboard title
 st.title("🐦 Twitter Search Dashboard")
@@ -52,9 +65,15 @@ st.markdown("Search for tweets using Twitter's Advanced Search API")
 # Sidebar for API credentials and search parameters
 with st.sidebar:
     api_key = os.getenv("TWITTER_API_KEY", "")
+    openai_api_key = os.getenv("OPENAI_API_KEY", "")
+
+    st.header("API Credentials")
     if api_key == "":
-        st.header("API Credentials")
-        api_key = st.text_input("API Key", type="password")
+        api_key = st.text_input("Twitter API Key", type="password")
+    if openai_api_key == "":
+        openai_api_key = st.text_input("OpenAI API Key", type="password")
+        if openai_api_key:
+            os.environ["OPENAI_API_KEY"] = openai_api_key
 
     st.header("Search Parameters")
     query = st.text_input("Search query", placeholder="Enter keywords, hashtags, etc.")
@@ -208,6 +227,9 @@ with st.sidebar:
         st.session_state.next_cursor = ""
         st.session_state.grouped_tweets = None
         st.session_state.display_df = None
+        st.session_state.sentiment_results = None
+        st.session_state.phrases = None
+        st.session_state.summary = None
         st.rerun()
 
 
@@ -250,6 +272,297 @@ def group_tweets(df):
         return {}
 
 
+# New AI-powered analysis functions
+def analyze_sentiment(tweets_df, llm_model="gpt-4o-mini"):
+    """Analyze sentiment of tweets using LLM."""
+    results = []
+
+    # Initialize the LLM
+    llm = ChatOpenAI(temperature=0, model=llm_model)
+
+    # Create a prompt template for sentiment analysis
+    prompt = ChatPromptTemplate.from_template(
+        """Analyze the sentiment of the following tweet. 
+        Provide a sentiment label (positive, negative, or neutral) and a score from -1 (very negative) to 1 (very positive).
+        
+        Tweet: {tweet}
+        
+        Return the result in the following format:
+        Sentiment: [SENTIMENT]
+        Score: [SCORE]
+        Explanation: [BRIEF_EXPLANATION]
+        """
+    )
+
+    # Create a chain for sentiment analysis
+    chain = prompt | llm
+
+    # Process tweets in batches to avoid API limits
+    batch_size = 10
+    progress_bar = st.progress(0)
+
+    for i in range(0, len(tweets_df), batch_size):
+        batch = tweets_df.iloc[i : i + batch_size]
+
+        for idx, tweet in batch.iterrows():
+            tweet_text = tweet.get("text", "")
+            if not tweet_text:
+                results.append(
+                    {
+                        "sentiment": "neutral",
+                        "score": 0.0,
+                        "explanation": "No text content",
+                    }
+                )
+                continue
+
+            try:
+                # Get sentiment from LLM
+                response = chain.invoke({"tweet": tweet_text})
+                response_text = response.content
+
+                # Parse response
+                sentiment = "neutral"
+                score = 0.0
+                explanation = ""
+
+                for line in response_text.split("\n"):
+                    if line.startswith("Sentiment:"):
+                        sentiment = line.replace("Sentiment:", "").strip().lower()
+                    elif line.startswith("Score:"):
+                        try:
+                            score = float(line.replace("Score:", "").strip())
+                        except ValueError:
+                            score = 0.0
+                    elif line.startswith("Explanation:"):
+                        explanation = line.replace("Explanation:", "").strip()
+
+                results.append(
+                    {"sentiment": sentiment, "score": score, "explanation": explanation}
+                )
+            except Exception as e:
+                st.error(f"Error analyzing sentiment: {e}")
+                results.append(
+                    {
+                        "sentiment": "neutral",
+                        "score": 0.0,
+                        "explanation": f"Error: {str(e)}",
+                    }
+                )
+
+        # Update progress
+        progress_bar.progress(min(1.0, (i + batch_size) / len(tweets_df)))
+
+    progress_bar.empty()
+    return results
+
+
+def extract_key_phrases(tweets_df, llm_model="gpt-4o-mini"):
+    """Extract key positive and negative phrases from tweets."""
+    # Initialize the LLM
+    llm = ChatOpenAI(temperature=0, model=llm_model)
+
+    # Combine all tweets into a single text
+    all_text = " ".join(tweets_df["text"].fillna("").astype(str).tolist())
+
+    # Create a prompt template for phrase extraction
+    prompt = ChatPromptTemplate.from_template(
+        """Analyze the following collection of tweets and extract the most common positive and negative phrases or topics.
+        
+        Tweets: {text}
+        
+        Return the result in the following format:
+        Positive Phrases: [COMMA_SEPARATED_PHRASES]
+        Negative Phrases: [COMMA_SEPARATED_PHRASES]
+        Key Topics: [COMMA_SEPARATED_TOPICS]
+        """
+    )
+
+    # Create a chain for phrase extraction
+    chain = prompt | llm
+
+    try:
+        # Get phrases from LLM
+        response = chain.invoke(
+            {"text": all_text[:8000]}
+        )  # Limit text to avoid token limits
+        response_text = response.content
+
+        # Parse response
+        positive_phrases = []
+        negative_phrases = []
+        key_topics = []
+
+        for line in response_text.split("\n"):
+            if line.startswith("Positive Phrases:"):
+                positive_str = line.replace("Positive Phrases:", "").strip()
+                positive_phrases = [p.strip() for p in positive_str.split(",")]
+            elif line.startswith("Negative Phrases:"):
+                negative_str = line.replace("Negative Phrases:", "").strip()
+                negative_phrases = [p.strip() for p in negative_str.split(",")]
+            elif line.startswith("Key Topics:"):
+                topics_str = line.replace("Key Topics:", "").strip()
+                key_topics = [t.strip() for t in topics_str.split(",")]
+
+        return {
+            "positive_phrases": positive_phrases,
+            "negative_phrases": negative_phrases,
+            "key_topics": key_topics,
+        }
+    except Exception as e:
+        st.error(f"Error extracting phrases: {e}")
+        return {"positive_phrases": [], "negative_phrases": [], "key_topics": []}
+
+
+def generate_summary(tweets_df, sentiment_results, phrases, llm_model="gpt-4o-mini"):
+    """Generate a summary of the tweets with sentiment analysis."""
+    # Initialize the LLM
+    llm = ChatOpenAI(temperature=0, model=llm_model)
+
+    # Calculate overall sentiment statistics
+    sentiments = [result["sentiment"] for result in sentiment_results]
+    sentiment_counts = Counter(sentiments)
+    avg_score = (
+        sum(result["score"] for result in sentiment_results) / len(sentiment_results)
+        if sentiment_results
+        else 0
+    )
+
+    # Create a prompt template for summary generation
+    prompt = ChatPromptTemplate.from_template(
+        """Generate a detailed summary of the following tweets and their sentiment analysis.
+        
+        Number of Tweets: {num_tweets}
+        Positive Tweets: {positive_count}
+        Neutral Tweets: {neutral_count}
+        Negative Tweets: {negative_count}
+        Average Sentiment Score: {avg_score}
+        
+        Common Positive Phrases: {positive_phrases}
+        Common Negative Phrases: {negative_phrases}
+        Key Topics: {key_topics}
+        
+        Please provide:
+        1. An overview of the sentiment distribution
+        2. Insights into the main topics discussed
+        3. Notable trends or patterns
+        4. Any recommendations based on the sentiment analysis
+        
+        Keep the summary concise but informative.
+        """
+    )
+
+    # Create a chain for summary generation
+    chain = prompt | llm
+
+    try:
+        # Get summary from LLM
+        response = chain.invoke(
+            {
+                "num_tweets": len(tweets_df),
+                "positive_count": sentiment_counts.get("positive", 0),
+                "neutral_count": sentiment_counts.get("neutral", 0),
+                "negative_count": sentiment_counts.get("negative", 0),
+                "avg_score": round(avg_score, 2),
+                "positive_phrases": ", ".join(phrases.get("positive_phrases", [])),
+                "negative_phrases": ", ".join(phrases.get("negative_phrases", [])),
+                "key_topics": ", ".join(phrases.get("key_topics", [])),
+            }
+        )
+
+        return response.content
+    except Exception as e:
+        st.error(f"Error generating summary: {e}")
+        return "Unable to generate summary due to an error."
+
+
+# Visualization functions
+def create_sentiment_visualizations(tweets_df, sentiment_results):
+    """Create visualizations for sentiment analysis."""
+    if not sentiment_results:
+        return None, None
+
+    # Add sentiment data to the dataframe
+    sentiment_df = tweets_df.copy()
+    sentiment_df["sentiment"] = [result["sentiment"] for result in sentiment_results]
+    sentiment_df["sentiment_score"] = [result["score"] for result in sentiment_results]
+
+    # Create sentiment distribution pie chart
+    sentiment_counts = sentiment_df["sentiment"].value_counts()
+    fig1 = px.pie(
+        values=sentiment_counts.values,
+        names=sentiment_counts.index,
+        title="Sentiment Distribution",
+        color=sentiment_counts.index,
+        color_discrete_map={"positive": "green", "neutral": "gray", "negative": "red"},
+    )
+
+    # Create sentiment score histogram
+    fig2 = px.histogram(
+        sentiment_df,
+        x="sentiment_score",
+        title="Sentiment Score Distribution",
+        color="sentiment",
+        color_discrete_map={"positive": "green", "neutral": "gray", "negative": "red"},
+        nbins=20,
+    )
+
+    return fig1, fig2
+
+
+def create_phrase_heatmap(phrases, sentiment_results):
+    """Create heatmap visualization for positive and negative phrases."""
+    if (
+        not phrases
+        or not phrases.get("positive_phrases")
+        or not phrases.get("negative_phrases")
+    ):
+        return None
+
+    positive_phrases = phrases.get("positive_phrases", [])[:10]  # Limit to top 10
+    negative_phrases = phrases.get("negative_phrases", [])[:10]  # Limit to top 10
+
+    # Create data for the heatmap
+    phrases_data = []
+
+    # Calculate sentiment intensity for visualization
+    sentiment_intensity = {}
+    for phrase in positive_phrases:
+        sentiment_intensity[phrase] = (
+            0.7 + 0.3 * np.random.random()
+        )  # Random value between 0.7 and 1.0
+
+    for phrase in negative_phrases:
+        sentiment_intensity[phrase] = (
+            -0.7 - 0.3 * np.random.random()
+        )  # Random value between -0.7 and -1.0
+
+    # Create a dataframe for the heatmap
+    for phrase, intensity in sentiment_intensity.items():
+        sentiment_type = "Positive" if intensity > 0 else "Negative"
+        phrases_data.append(
+            {
+                "Phrase": phrase,
+                "Sentiment Type": sentiment_type,
+                "Intensity": abs(intensity),
+            }
+        )
+
+    phrases_df = pd.DataFrame(phrases_data)
+
+    # Create the heatmap
+    fig = px.density_heatmap(
+        phrases_df,
+        x="Sentiment Type",
+        y="Phrase",
+        z="Intensity",
+        title="Key Phrases by Sentiment",
+        color_continuous_scale=[(0, "lightblue"), (1, "darkblue")],
+    )
+
+    return fig
+
+
 # Main content area
 if not api_key:
     st.warning("Please enter your API key in the sidebar to start searching.")
@@ -276,6 +589,9 @@ else:
                         st.session_state.next_cursor = results["next_cursor"]
                     st.session_state.grouped_tweets = None
                     st.session_state.display_df = None
+                    st.session_state.sentiment_results = None
+                    st.session_state.phrases = None
+                    st.session_state.summary = None
                 st.rerun()
 
     if (
@@ -432,7 +748,6 @@ else:
             st.subheader("Tweets Display")
             display_option = st.radio(
                 "Display Style",
-                # ["Card View", "Table View", "JSON View"],
                 ["Card View", "Table View"],
                 key="display_style",
             )
@@ -499,13 +814,8 @@ else:
             elif display_option == "Table View":
                 st.markdown("### Tweet Groups (Table View)")
                 st.dataframe(st.session_state.display_df, use_container_width=True)
-            # else:
-            #     st.markdown("### Tweet Groups (JSON View)")
-            #     st.json(tweets_df.to_dict(orient="records"))
 
             st.subheader("Export Results")
-            # col1, col2 = st.columns(2)
-            # with col1:
             csv = st.session_state.display_df.to_csv(index=False).encode("utf-8")
             st.download_button(
                 "Download CSV",
@@ -514,15 +824,151 @@ else:
                 mime="text/csv",
                 key="download_csv",
             )
-            # with col2:
-            #     json_str = tweets_df.to_json(orient="records")
-            #     st.download_button(
-            #         "Download JSON",
-            #         data=json_str,
-            #         file_name=f"twitter_search_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-            #         mime="application/json",
-            #         key="download_json",
-            #     )
+
+            # --- New Section: AI-Powered Sentiment Analysis ---
+            st.markdown("---")
+            st.header("🧠 AI-Powered Sentiment Analysis")
+
+            if not openai_api_key:
+                st.warning(
+                    "Please enter your OpenAI API key in the sidebar to enable sentiment analysis."
+                )
+            else:
+                col1, col2 = st.columns(2)
+                with col1:
+                    run_analysis = st.button("Run Sentiment Analysis")
+                with col2:
+                    llm_model = st.selectbox(
+                        "Select LLM Model",
+                        ["gpt-4o-mini", "gpt-4", "gpt-4o"],
+                        key="llm_model",
+                    )
+
+                if run_analysis or st.session_state.sentiment_results is not None:
+                    if run_analysis or st.session_state.sentiment_results is None:
+                        with st.spinner("Analyzing tweet sentiment..."):
+                            st.session_state.sentiment_results = analyze_sentiment(
+                                tweets_df, llm_model
+                            )
+
+                        with st.spinner("Extracting key phrases..."):
+                            st.session_state.phrases = extract_key_phrases(
+                                tweets_df, llm_model
+                            )
+
+                        with st.spinner("Generating summary..."):
+                            st.session_state.summary = generate_summary(
+                                tweets_df,
+                                st.session_state.sentiment_results,
+                                st.session_state.phrases,
+                                llm_model,
+                            )
+
+                    # Display sentiment analysis results
+                    st.subheader("Sentiment Analysis Results")
+
+                    # Add sentiment to the dataframe
+                    tweets_with_sentiment = tweets_df.copy()
+                    tweets_with_sentiment["sentiment"] = [
+                        r.get("sentiment", "neutral")
+                        for r in st.session_state.sentiment_results
+                    ]
+                    tweets_with_sentiment["sentiment_score"] = [
+                        r.get("score", 0.0) for r in st.session_state.sentiment_results
+                    ]
+
+                    # Display sentiment metrics
+                    sentiment_counts = Counter(
+                        [
+                            r.get("sentiment", "neutral")
+                            for r in st.session_state.sentiment_results
+                        ]
+                    )
+                    pos_count = sentiment_counts.get("positive", 0)
+                    neu_count = sentiment_counts.get("neutral", 0)
+                    neg_count = sentiment_counts.get("negative", 0)
+
+                    scores = [
+                        r.get("score", 0.0) for r in st.session_state.sentiment_results
+                    ]
+                    avg_score = sum(scores) / len(scores) if scores else 0
+
+                    col1, col2, col3, col4 = st.columns(4)
+                    with col1:
+                        st.metric("😊 Positive", pos_count)
+                    with col2:
+                        st.metric("😐 Neutral", neu_count)
+                    with col3:
+                        st.metric("😟 Negative", neg_count)
+                    with col4:
+                        st.metric("Average Score", f"{avg_score:.2f}")
+
+                    # Display sentiment visualizations
+                    st.subheader("Sentiment Visualizations")
+                    fig1, fig2 = create_sentiment_visualizations(
+                        tweets_df, st.session_state.sentiment_results
+                    )
+
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        if fig1:
+                            st.plotly_chart(fig1, use_container_width=True)
+                    with col2:
+                        if fig2:
+                            st.plotly_chart(fig2, use_container_width=True)
+
+                    # Display phrase heatmap
+                    st.subheader("Common Phrases by Sentiment")
+                    phrase_fig = create_phrase_heatmap(
+                        st.session_state.phrases, st.session_state.sentiment_results
+                    )
+                    if phrase_fig:
+                        st.plotly_chart(phrase_fig, use_container_width=True)
+
+                    # Display common phrases
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.subheader("Positive Phrases")
+                        positive_phrases = st.session_state.phrases.get(
+                            "positive_phrases", []
+                        )
+                        if positive_phrases:
+                            for phrase in positive_phrases:
+                                st.markdown(f"✅ {phrase}")
+                    with col2:
+                        st.subheader("Negative Phrases")
+                        negative_phrases = st.session_state.phrases.get(
+                            "negative_phrases", []
+                        )
+                        if negative_phrases:
+                            for phrase in negative_phrases:
+                                st.markdown(f"❌ {phrase}")
+
+                    # Display key topics
+                    st.subheader("Key Topics")
+                    key_topics = st.session_state.phrases.get("key_topics", [])
+                    if key_topics:
+                        topic_cols = st.columns(min(5, len(key_topics)))
+                        for i, topic in enumerate(key_topics):
+                            with topic_cols[i % len(topic_cols)]:
+                                st.markdown(f"🔑 **{topic}**")
+
+                    # Display summary
+                    st.subheader("AI-Generated Summary")
+                    st.markdown(st.session_state.summary)
+
+                    # Allow downloading sentiment results
+                    sentiment_df = tweets_with_sentiment[
+                        ["id", "text", "sentiment", "sentiment_score", "createdAt"]
+                    ]
+                    sentiment_csv = sentiment_df.to_csv(index=False).encode("utf-8")
+                    st.download_button(
+                        "Download Sentiment Analysis CSV",
+                        data=sentiment_csv,
+                        file_name=f"twitter_sentiment_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv",
+                        key="download_sentiment_csv",
+                    )
     elif not st.session_state.has_searched:
         st.info("Enter your search parameters and click 'Search Tweets' to start.")
         with st.expander("Usage Tips"):

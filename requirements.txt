@@ -3,3 +3,6 @@ requests
 pandas
 plotly
 python-dotenv
+langchain
+langchain-community
+openai
