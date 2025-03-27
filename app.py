@@ -20,7 +20,7 @@ st.set_page_config(page_title="Twitter Search Dashboard", page_icon="🐦", layo
 
 # Load configuration from config.yaml
 try:
-    with open("config.yaml", "r") as config_file:
+    with open(file="config.yaml", mode="r", encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
 except FileNotFoundError:
     st.error("Error: config.yaml not found. Please make sure the file exists.")
