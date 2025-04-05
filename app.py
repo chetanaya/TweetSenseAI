@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 import yaml
 
 # New imports for AI-powered analysis
-from langchain.chat_models import ChatOpenAI
+from langchain_openai import ChatOpenAI
 from langchain.prompts import ChatPromptTemplate
 from collections import Counter
 import numpy as np
@@ -67,8 +67,8 @@ with st.sidebar:
     api_key = os.getenv("TWITTER_API_KEY", "")
     openai_api_key = os.getenv("OPENAI_API_KEY", "")
 
-    st.header("API Credentials")
     if api_key == "":
+        st.header("API Credentials")
         api_key = st.text_input("Twitter API Key", type="password")
     if openai_api_key == "":
         openai_api_key = st.text_input("OpenAI API Key", type="password")
@@ -834,15 +834,13 @@ else:
                     "Please enter your OpenAI API key in the sidebar to enable sentiment analysis."
                 )
             else:
-                col1, col2 = st.columns(2)
-                with col1:
-                    run_analysis = st.button("Run Sentiment Analysis")
-                with col2:
-                    llm_model = st.selectbox(
-                        "Select LLM Model",
-                        ["gpt-4o-mini", "gpt-4", "gpt-4o"],
-                        key="llm_model",
-                    )
+                llm_model = st.selectbox(
+                    "Select LLM Model",
+                    ["gpt-4o-mini", "gpt-4", "gpt-4o"],
+                    key="llm_model",
+                )
+
+                run_analysis = st.button("Run Sentiment Analysis")
 
                 if run_analysis or st.session_state.sentiment_results is not None:
                     if run_analysis or st.session_state.sentiment_results is None:
