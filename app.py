@@ -15,6 +15,15 @@ import numpy as np
 
 load_dotenv()
 
+# Load configuration from config.yaml
+with open("config.yaml", "r") as config_file:
+    config = yaml.safe_load(config_file)
+
+# Extract configuration values
+filters_config = config.get("filters", {})
+dynamic_filters = filters_config.get("dynamic_filters", [])
+default_max_tweets = filters_config.get("default_max_tweets", 40)
+
 # Set page title and favicon
 st.set_page_config(page_title="Twitter Search Dashboard", page_icon="🐦", layout="wide")
 
