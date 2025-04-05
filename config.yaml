@@ -126,7 +126,7 @@ filters:
       default: true
       query_prefix: "-from:AskPerplexity"
 
-  default_max_tweets: 30
+  default_max_tweets: 20
 
   # New language mapping dictionary
   language_mapping:
